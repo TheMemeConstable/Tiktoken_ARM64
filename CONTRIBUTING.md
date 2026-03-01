@@ -15,7 +15,7 @@ Thank you for your interest in contributing!
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/Tiktoken_ARM64.git
+   git clone https://github.com/TheMemeConstable/Tiktoken_ARM64.git
    cd Tiktoken_ARM64
    ```
 
