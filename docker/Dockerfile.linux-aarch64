@@ -1,0 +1,69 @@
+# =============================================================================
+# Dockerfile for building tiktoken ARM64 wheels on Linux (aarch64)
+#
+# This is designed to be run under QEMU emulation or on a native ARM64 host.
+#
+# Usage (from repo root):
+#   docker buildx build --platform linux/arm64 \
+#     -f docker/Dockerfile.linux-aarch64 \
+#     --build-arg PYTHON_VERSION=3.12 \
+#     --build-arg TIKTOKEN_VERSION=0.12.0 \
+#     --output type=local,dest=./wheelhouse .
+# =============================================================================
+
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim-bullseye AS builder
+
+ARG TIKTOKEN_VERSION=0.12.0
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    g++ \
+    make \
+    libc6-dev \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y \
+    && apt-get install --reinstall libc6-dev -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Limit Rust parallel jobs to reduce memory usage (important under QEMU)
+ENV CARGO_BUILD_JOBS=2
+
+# Upgrade pip and install build tools
+RUN pip install --upgrade pip setuptools wheel setuptools-rust
+
+# Download tiktoken source and build wheel
+RUN pip download --no-binary :all: --no-deps tiktoken==${TIKTOKEN_VERSION} -d /src/ \
+    && cd /src && tar xzf *.tar.gz && rm *.tar.gz
+
+RUN cd /src/tiktoken-* && pip wheel . --no-deps -w /wheelhouse/
+
+# =============================================================================
+# Validation stage — install and test the wheel in a clean image
+# =============================================================================
+FROM python:${PYTHON_VERSION}-slim-bullseye AS tester
+
+COPY --from=builder /wheelhouse/ /wheelhouse/
+RUN pip install /wheelhouse/tiktoken-*.whl requests
+
+RUN python -c "\
+import tiktoken; \
+enc = tiktoken.get_encoding('cl100k_base'); \
+tokens = enc.encode('hello world'); \
+assert tokens == [15339, 1917], f'Unexpected tokens: {tokens}'; \
+print('SUCCESS: tiktoken ARM64 wheel validated'); \
+print(f'  Encoding: {enc.name}'); \
+print(f'  Tokens: {tokens}'); \
+"
+
+# =============================================================================
+# Output stage — just the wheel
+# =============================================================================
+FROM scratch AS output
+COPY --from=builder /wheelhouse/*.whl /

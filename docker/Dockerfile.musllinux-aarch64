@@ -1,0 +1,64 @@
+# =============================================================================
+# Dockerfile for building tiktoken ARM64 wheels on Alpine/musllinux (aarch64)
+#
+# Usage (from repo root):
+#   docker buildx build --platform linux/arm64 \
+#     -f docker/Dockerfile.musllinux-aarch64 \
+#     --build-arg PYTHON_VERSION=3.12 \
+#     --build-arg TIKTOKEN_VERSION=0.12.0 \
+#     --output type=local,dest=./wheelhouse .
+# =============================================================================
+
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-alpine AS builder
+
+ARG TIKTOKEN_VERSION=0.12.0
+
+# Install build dependencies for Alpine
+RUN apk add --no-cache \
+    curl \
+    gcc \
+    g++ \
+    make \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    libffi-dev
+
+# Install Rust toolchain
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Limit Rust parallel jobs to reduce memory usage
+ENV CARGO_BUILD_JOBS=2
+
+# Upgrade pip and install build tools
+RUN pip install --upgrade pip setuptools wheel setuptools-rust
+
+# Download tiktoken source and build wheel
+RUN pip download --no-binary :all: --no-deps tiktoken==${TIKTOKEN_VERSION} -d /src/ \
+    && cd /src && tar xzf *.tar.gz && rm *.tar.gz
+
+RUN cd /src/tiktoken-* && pip wheel . --no-deps -w /wheelhouse/
+
+# =============================================================================
+# Validation stage
+# =============================================================================
+FROM python:${PYTHON_VERSION}-alpine AS tester
+
+COPY --from=builder /wheelhouse/ /wheelhouse/
+RUN pip install /wheelhouse/tiktoken-*.whl requests
+
+RUN python -c "\
+import tiktoken; \
+enc = tiktoken.get_encoding('cl100k_base'); \
+tokens = enc.encode('hello world'); \
+assert tokens == [15339, 1917], f'Unexpected tokens: {tokens}'; \
+print('SUCCESS: tiktoken musllinux ARM64 wheel validated'); \
+"
+
+# =============================================================================
+# Output stage
+# =============================================================================
+FROM scratch AS output
+COPY --from=builder /wheelhouse/*.whl /

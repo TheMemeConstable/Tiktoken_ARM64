@@ -1,0 +1,71 @@
+[project]
+name = "tiktoken-arm64-builder"
+version = "0.1.0"
+description = "Build and distribute tiktoken wheels for ARM64 architectures"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+# =============================================================================
+# cibuildwheel configuration
+# =============================================================================
+# This config is used by the CI/CD pipeline to build tiktoken wheels for ARM64.
+# It does NOT build this project — it builds the upstream tiktoken package.
+# =============================================================================
+
+[tool.cibuildwheel]
+# Build for ARM64 architectures only
+archs = ["aarch64", "arm64"]
+
+# Python versions to build for
+build = ["cp39-*", "cp310-*", "cp311-*", "cp312-*", "cp313-*"]
+
+# Skip musllinux i686, PyPy, and 32-bit builds
+skip = ["pp*", "*-win32", "*-manylinux_i686", "*-musllinux_i686"]
+
+# Test the built wheels
+test-command = "python -c \"import tiktoken; enc = tiktoken.get_encoding('cl100k_base'); assert enc.encode('hello world') == [15339, 1917]; print('Wheel OK')\""
+test-requires = ["requests"]
+
+[tool.cibuildwheel.linux]
+# Use manylinux2014 for broad compatibility
+manylinux-aarch64-image = "manylinux2014"
+
+# Install Rust toolchain before building (required for tiktoken's Rust extension)
+before-all = [
+    "curl https://sh.rustup.rs -sSf | sh -s -- -y",
+    "export PATH=\"$HOME/.cargo/bin:$PATH\"",
+    "rustup target add aarch64-unknown-linux-gnu",
+]
+
+# Ensure cargo is on PATH during build
+environment = { PATH = "/root/.cargo/bin:$PATH", CARGO_NET_GIT_FETCH_WITH_CLI = "true" }
+
+# Reduce memory usage during QEMU emulated builds (critical for aarch64 emulation)
+environment-pass = ["CARGO_BUILD_JOBS"]
+
+[tool.cibuildwheel.linux.environment]
+PATH = "/root/.cargo/bin:$PATH"
+CARGO_NET_GIT_FETCH_WITH_CLI = "true"
+# Limit parallel jobs to avoid OOM under QEMU emulation
+CARGO_BUILD_JOBS = "2"
+
+[tool.cibuildwheel.macos]
+# macOS ARM64 (Apple Silicon) — native build, no cross-compilation needed on M1+ runners
+archs = ["arm64"]
+
+[tool.cibuildwheel.windows]
+# Windows ARM64
+archs = ["ARM64"]
+before-build = "rustup target add aarch64-pc-windows-msvc"
+
+# =============================================================================
+# pytest configuration (for our smoke tests)
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

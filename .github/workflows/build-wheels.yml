@@ -1,0 +1,279 @@
+name: Build ARM64 Wheels
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tiktoken_version:
+        description: "Tiktoken version to build (e.g., 0.12.0)"
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Default tiktoken version — override via workflow_dispatch input
+  TIKTOKEN_VERSION: ${{ github.event.inputs.tiktoken_version || '0.12.0' }}
+
+jobs:
+  # ===========================================================================
+  # Linux ARM64 (aarch64) — manylinux wheels via QEMU emulation
+  # ===========================================================================
+  build-linux-aarch64:
+    name: Linux aarch64 • Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU for aarch64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.22.0
+
+      - name: Download tiktoken source
+        run: |
+          pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
+          cd source && tar xzf *.tar.gz && rm *.tar.gz
+          echo "TIKTOKEN_SRC=$(ls -d source/tiktoken-*/)" >> $GITHUB_ENV
+
+      - name: Build wheel
+        run: cibuildwheel --output-dir wheelhouse "${{ env.TIKTOKEN_SRC }}"
+        env:
+          CIBW_BUILD: "${{ matrix.python }}-manylinux_aarch64"
+          CIBW_ARCHS_LINUX: "aarch64"
+          CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux2014"
+          CIBW_BEFORE_ALL_LINUX: >
+            curl https://sh.rustup.rs -sSf | sh -s -- -y &&
+            export PATH="$HOME/.cargo/bin:$PATH"
+          CIBW_ENVIRONMENT_LINUX: >
+            PATH=/root/.cargo/bin:$PATH
+            CARGO_NET_GIT_FETCH_WITH_CLI=true
+            CARGO_BUILD_JOBS=2
+          CIBW_TEST_COMMAND: >
+            python -c "import tiktoken; enc = tiktoken.get_encoding('cl100k_base'); assert enc.encode('hello world') == [15339, 1917]; print('OK: Linux aarch64')"
+          CIBW_TEST_REQUIRES: "requests"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-aarch64-${{ matrix.python }}
+          path: wheelhouse/*.whl
+
+  # ===========================================================================
+  # Linux ARM64 (aarch64) — musllinux wheels
+  # ===========================================================================
+  build-linux-musllinux-aarch64:
+    name: musllinux aarch64 • Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU for aarch64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.22.0
+
+      - name: Download tiktoken source
+        run: |
+          pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
+          cd source && tar xzf *.tar.gz && rm *.tar.gz
+          echo "TIKTOKEN_SRC=$(ls -d source/tiktoken-*/)" >> $GITHUB_ENV
+
+      - name: Build wheel
+        run: cibuildwheel --output-dir wheelhouse "${{ env.TIKTOKEN_SRC }}"
+        env:
+          CIBW_BUILD: "${{ matrix.python }}-musllinux_aarch64"
+          CIBW_ARCHS_LINUX: "aarch64"
+          CIBW_BEFORE_ALL_LINUX: >
+            apk add --no-cache curl gcc musl-dev &&
+            curl https://sh.rustup.rs -sSf | sh -s -- -y &&
+            export PATH="$HOME/.cargo/bin:$PATH"
+          CIBW_ENVIRONMENT_LINUX: >
+            PATH=/root/.cargo/bin:$PATH
+            CARGO_NET_GIT_FETCH_WITH_CLI=true
+            CARGO_BUILD_JOBS=2
+          CIBW_TEST_COMMAND: >
+            python -c "import tiktoken; enc = tiktoken.get_encoding('cl100k_base'); assert enc.encode('hello world') == [15339, 1917]; print('OK: musllinux aarch64')"
+          CIBW_TEST_REQUIRES: "requests"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-musllinux-aarch64-${{ matrix.python }}
+          path: wheelhouse/*.whl
+
+  # ===========================================================================
+  # macOS ARM64 (Apple Silicon)
+  # ===========================================================================
+  build-macos-arm64:
+    name: macOS arm64 • Python ${{ matrix.python }}
+    runs-on: macos-14  # Apple Silicon runner
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.22.0
+
+      - name: Download tiktoken source
+        run: |
+          pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
+          cd source && tar xzf *.tar.gz && rm *.tar.gz
+          echo "TIKTOKEN_SRC=$(ls -d source/tiktoken-*/)" >> $GITHUB_ENV
+
+      - name: Build wheel
+        run: cibuildwheel --output-dir wheelhouse "${{ env.TIKTOKEN_SRC }}"
+        env:
+          CIBW_BUILD: "${{ matrix.python }}-macosx_arm64"
+          CIBW_ARCHS_MACOS: "arm64"
+          CIBW_TEST_COMMAND: >
+            python -c "import tiktoken; enc = tiktoken.get_encoding('cl100k_base'); assert enc.encode('hello world') == [15339, 1917]; print('OK: macOS arm64')"
+          CIBW_TEST_REQUIRES: "requests"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-arm64-${{ matrix.python }}
+          path: wheelhouse/*.whl
+
+  # ===========================================================================
+  # Windows ARM64
+  # ===========================================================================
+  build-windows-arm64:
+    name: Windows ARM64 • Python ${{ matrix.python }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["cp311", "cp312", "cp313"]  # ARM64 Windows Python is limited
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.22.0
+
+      - name: Download tiktoken source
+        run: |
+          pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
+          cd source
+          tar xzf (Get-ChildItem *.tar.gz).Name
+          Remove-Item *.tar.gz
+          $src = (Get-ChildItem -Directory tiktoken-*).FullName
+          echo "TIKTOKEN_SRC=$src" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Build wheel
+        run: cibuildwheel --output-dir wheelhouse "${{ env.TIKTOKEN_SRC }}"
+        env:
+          CIBW_BUILD: "${{ matrix.python }}-win_arm64"
+          CIBW_ARCHS_WINDOWS: "ARM64"
+          CIBW_BEFORE_BUILD_WINDOWS: "rustup target add aarch64-pc-windows-msvc"
+          # Note: Cannot test ARM64 wheels on x86_64 runner
+          CIBW_TEST_SKIP: "*-win_arm64"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-windows-arm64-${{ matrix.python }}
+          path: wheelhouse/*.whl
+
+  # ===========================================================================
+  # Collect all wheels and create a release
+  # ===========================================================================
+  collect-wheels:
+    name: Collect all wheels
+    needs:
+      - build-linux-aarch64
+      - build-linux-musllinux-aarch64
+      - build-macos-arm64
+      - build-windows-arm64
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-wheels/
+          pattern: wheel-*
+          merge-multiple: true
+
+      - name: List wheels
+        run: ls -lah all-wheels/
+
+      - name: Upload combined artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-arm64-wheels
+          path: all-wheels/*.whl
+
+  # ===========================================================================
+  # Publish to PyPI (on tag push only)
+  # ===========================================================================
+  publish:
+    name: Publish wheels
+    needs: collect-wheels
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      id-token: write  # for trusted publishing
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: all-arm64-wheels
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Configure trusted publishing in PyPI project settings
