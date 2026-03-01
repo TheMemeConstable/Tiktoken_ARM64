@@ -51,7 +51,8 @@ jobs:
       - name: Download tiktoken source
         run: |
           pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
-          cd source && tar xzf *.tar.gz && rm *.tar.gz
+          tar xzf source/*.tar.gz -C source/
+          rm source/*.tar.gz
           echo "TIKTOKEN_SRC=$(ls -d source/tiktoken-*/)" >> $GITHUB_ENV
 
       - name: Build wheel
@@ -106,7 +107,8 @@ jobs:
       - name: Download tiktoken source
         run: |
           pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
-          cd source && tar xzf *.tar.gz && rm *.tar.gz
+          tar xzf source/*.tar.gz -C source/
+          rm source/*.tar.gz
           echo "TIKTOKEN_SRC=$(ls -d source/tiktoken-*/)" >> $GITHUB_ENV
 
       - name: Build wheel
@@ -159,7 +161,8 @@ jobs:
       - name: Download tiktoken source
         run: |
           pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
-          cd source && tar xzf *.tar.gz && rm *.tar.gz
+          tar xzf source/*.tar.gz -C source/
+          rm source/*.tar.gz
           echo "TIKTOKEN_SRC=$(ls -d source/tiktoken-*/)" >> $GITHUB_ENV
 
       - name: Build wheel
@@ -186,7 +189,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["cp311", "cp312", "cp313"]  # ARM64 Windows Python is limited
+        include:
+          - python: "cp311"
+            python-version: "3.11"
+          - python: "cp312"
+            python-version: "3.12"
+          - python: "cp313"
+            python-version: "3.13"
     steps:
       - uses: actions/checkout@v4
 
@@ -206,10 +215,10 @@ jobs:
       - name: Download tiktoken source
         run: |
           pip download --no-binary :all: --no-deps tiktoken==${{ env.TIKTOKEN_VERSION }} -d source/
-          cd source
-          tar xzf (Get-ChildItem *.tar.gz).Name
-          Remove-Item *.tar.gz
-          $src = (Get-ChildItem -Directory tiktoken-*).FullName
+          $tarball = (Get-ChildItem source/*.tar.gz).FullName
+          tar xzf $tarball -C source/
+          Remove-Item $tarball
+          $src = (Get-ChildItem -Directory source/tiktoken-*).FullName
           echo "TIKTOKEN_SRC=$src" >> $env:GITHUB_ENV
         shell: pwsh
 
@@ -219,6 +228,7 @@ jobs:
           CIBW_BUILD: "${{ matrix.python }}-win_arm64"
           CIBW_ARCHS_WINDOWS: "ARM64"
           CIBW_BEFORE_BUILD_WINDOWS: "rustup target add aarch64-pc-windows-msvc"
+          CIBW_ENVIRONMENT_WINDOWS: "PYO3_CROSS_PYTHON_VERSION=${{ matrix.python-version }}"
           # Note: Cannot test ARM64 wheels on x86_64 runner
           CIBW_TEST_SKIP: "*-win_arm64"
 
@@ -249,13 +259,21 @@ jobs:
           merge-multiple: true
 
       - name: List wheels
-        run: ls -lah all-wheels/
+        run: |
+          if [ -d all-wheels ] && ls all-wheels/*.whl 1>/dev/null 2>&1; then
+            echo "Found wheels:"
+            ls -lah all-wheels/*.whl
+          else
+            echo "::error::No wheel artifacts found"
+            exit 1
+          fi
 
       - name: Upload combined artifact
         uses: actions/upload-artifact@v4
         with:
           name: all-arm64-wheels
           path: all-wheels/*.whl
+          if-no-files-found: error
 
   # ===========================================================================
   # Publish to GitHub Releases (on tag push)
