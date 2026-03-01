@@ -258,6 +258,48 @@ jobs:
           path: all-wheels/*.whl
 
   # ===========================================================================
+  # Publish to GitHub Releases (on tag push)
+  # ===========================================================================
+  release:
+    name: Create GitHub Release
+    needs: collect-wheels
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write  # for creating releases
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: all-arm64-wheels
+          path: dist/
+
+      - name: List wheels for release
+        run: ls -lah dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          body: |
+            ## tiktoken ${{ env.TIKTOKEN_VERSION }} — ARM64 Wheels
+
+            Pre-built ARM64 wheels for [tiktoken](https://github.com/openai/tiktoken).
+
+            ### Platforms
+            - **Linux aarch64** (manylinux2014) — Python 3.9–3.13
+            - **Linux aarch64** (musllinux) — Python 3.9–3.13
+            - **macOS arm64** (Apple Silicon) — Python 3.9–3.13
+            - **Windows ARM64** — Python 3.11–3.13
+
+            ### Install
+            ```bash
+            pip install tiktoken --find-links https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/
+            ```
+
+  # ===========================================================================
   # Publish to PyPI (on tag push only)
   # ===========================================================================
   publish:

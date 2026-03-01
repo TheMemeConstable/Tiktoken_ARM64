@@ -63,16 +63,52 @@ The official [openai/tiktoken](https://github.com/openai/tiktoken) repository do
   - Native ARM64 runners (faster, e.g., GitHub ARM64 runners, Cirrus CI)
   - `cross` or `cargo-zigbuild` for cross-compilation from x86_64
 
+## Installation
+
+### From GitHub Releases (recommended)
+
+```bash
+# Install the latest ARM64 wheel directly
+pip install tiktoken --find-links https://github.com/TheMemeConstable/Tiktoken_ARM64/releases/latest/
+
+# Or install a specific version
+pip install tiktoken==0.12.0 --find-links https://github.com/TheMemeConstable/Tiktoken_ARM64/releases/download/v0.12.0/
+```
+
+### Download wheels manually
+
+```bash
+# Download latest release wheels
+python scripts/download_wheels.py --source release
+
+# Download a specific tag
+python scripts/download_wheels.py --source release --tag v0.12.0
+
+# Install from local wheelhouse
+pip install wheelhouse/tiktoken-*.whl
+```
+
+### Build from source locally
+
+Requires: Python (ARM64-native), Rust toolchain
+
+```bash
+python scripts/build_local.py --version 0.12.0 --platform native
+pip install wheelhouse/tiktoken-*.whl
+```
+
 ## Project Roadmap
 
-- [ ] Set up Rust cross-compilation environment for ARM64
-- [ ] Build tiktoken wheel for Linux aarch64 (manylinux)
-- [ ] Build tiktoken wheel for macOS arm64
-- [ ] Build tiktoken wheel for Windows ARM64
-- [ ] Test wheels across Python 3.9–3.13
-- [ ] Create CI/CD pipeline for automated ARM64 wheel builds
-- [ ] Publish wheels (PyPI or custom index)
-- [ ] Document installation instructions
+- [x] Set up Rust cross-compilation environment for ARM64
+- [x] Build tiktoken wheel for Windows ARM64 (native build validated)
+- [x] Create CI/CD pipeline for automated ARM64 wheel builds
+- [x] Build tiktoken wheel for Linux aarch64 (manylinux) — CI via QEMU
+- [x] Build tiktoken wheel for Linux aarch64 (musllinux) — CI via QEMU
+- [x] Build tiktoken wheel for macOS arm64 — CI via Apple Silicon runner
+- [x] Test suite: encode/decode, unicode, edge cases (22 tests)
+- [x] Publish wheels as GitHub Releases (on tag push)
+- [ ] Test wheels across Python 3.9–3.13 (CI matrix configured)
+- [ ] Publish to PyPI (trusted publishing configured, pending first tag)
 
 ## References
 

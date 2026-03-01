@@ -1,6 +1,7 @@
 # Build artifacts
 dist/
 wheelhouse/
+source/
 build/
 *.whl
 *.tar.gz
