@@ -80,3 +80,55 @@ C:\OpenAI_Custom\Tiktoken_ARM64\
 - **Target tiktoken version:** 0.12.0 (configurable)
 - **Python targets:** 3.9, 3.10, 3.11, 3.12, 3.13
 - **CI tool:** cibuildwheel 2.22.0
+
+---
+
+## Session 2 — March 1, 2026
+
+### Interpreter Path Fix
+
+VS Code was erroneously using `C:\pinokio\bin\miniconda\python.exe` as the default Python interpreter (a leftover from a Pinokio AI installation). Fixed by:
+1. Adding workspace-level `.vscode/settings.json` pointing to `.venv/Scripts/python.exe`
+2. Resetting the user-level `python.defaultInterpreterPath` to `"python"`
+
+### Housekeeping
+
+- Fixed `YOUR_USERNAME` → `TheMemeConstable` in `CONTRIBUTING.md`
+- Fixed duplicate `environment` key in `pyproject.toml` (`[tool.cibuildwheel.linux]` had `environment` declared both inline and as a sub-table, causing a TOML parse error that broke pytest)
+
+### Rust Toolchain & First Native Build
+
+- **Rust was already installed** via `rustup` but not on the terminal's `PATH`. Added `~\.cargo\bin` to the session PATH. Verified: `rustc 1.93.1 (aarch64-pc-windows-msvc)`.
+
+- **Discovered the `.venv` was using x86_64 Python under emulation.** The original `.venv` had Python 3.14 (AMD64), which caused `setuptools-rust` to target `x86_64-pc-windows-msvc` — a target not installed in our ARM64 Rust toolchain. Error: `can't find crate for 'core'`.
+
+- **Recreated `.venv` with ARM64-native Python 3.12.7** from `C:\Users\Srtho\AppData\Local\Programs\Python\Python312-arm64\`. This reports `win-arm64` platform tag, so the build correctly targets `aarch64-pc-windows-msvc`.
+
+- **Successfully built `tiktoken-0.12.0-cp312-cp312-win_arm64.whl`** (787 KB) using `build_local.py --platform native`.
+
+### Test Results
+
+**Smoke tests (test_wheel.py): 6/6 passed**
+- Import, encoding fetch, encode/decode roundtrip, known token values, multiple encodings, unicode handling
+
+**Full pytest suite (tests/test_smoke.py): 22/22 passed**
+- Basic functionality, encode/decode, unicode (Japanese, Arabic, Russian, emoji, accented, Chinese, Korean), edge cases, platform info
+
+### Key Finding: Python Architecture Matters
+
+On Windows ARM64, multiple Python builds may coexist:
+| Python | Architecture | Platform Tag | Rust Target |
+|--------|-------------|-------------|-------------|
+| 3.14.0 (from MS Store / winget) | x86_64 (emulated) | `win-amd64` | `x86_64-pc-windows-msvc` |
+| 3.12.7 (ARM64 installer) | ARM64 (native) | `win-arm64` | `aarch64-pc-windows-msvc` |
+
+The `.venv` **must** use an ARM64-native Python to produce ARM64 wheels. The `sysconfig.get_platform()` return value is the definitive check (`win-arm64` vs `win-amd64`).
+
+### Remaining TODO
+
+- [x] Install Rust toolchain locally and attempt a native build test
+- [ ] Test Docker builds with `build_local.py`
+- [ ] Validate the GitHub Actions workflow runs on push
+- [ ] Test wheels on actual ARM64 hardware (✅ done — this machine IS ARM64)
+- [ ] Consider hosting pre-built wheels as GitHub Releases
+- [ ] Update `download_wheels.py` if switching to GitHub Releases

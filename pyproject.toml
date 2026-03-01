@@ -42,13 +42,11 @@ before-all = [
     "rustup target add aarch64-unknown-linux-gnu",
 ]
 
-# Ensure cargo is on PATH during build
-environment = { PATH = "/root/.cargo/bin:$PATH", CARGO_NET_GIT_FETCH_WITH_CLI = "true" }
-
 # Reduce memory usage during QEMU emulated builds (critical for aarch64 emulation)
 environment-pass = ["CARGO_BUILD_JOBS"]
 
 [tool.cibuildwheel.linux.environment]
+# Ensure cargo is on PATH during build
 PATH = "/root/.cargo/bin:$PATH"
 CARGO_NET_GIT_FETCH_WITH_CLI = "true"
 # Limit parallel jobs to avoid OOM under QEMU emulation
