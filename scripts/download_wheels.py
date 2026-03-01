@@ -19,7 +19,7 @@ except ImportError:
     print("ERROR: 'requests' package required. Install with: pip install requests")
     raise SystemExit(1)
 
-REPO_OWNER = "YOUR_GITHUB_USERNAME"  # TODO: Update after repo creation
+REPO_OWNER = "TheMemeConstable"
 REPO_NAME = "Tiktoken_ARM64"
 
 
