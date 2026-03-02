@@ -132,3 +132,63 @@ The `.venv` **must** use an ARM64-native Python to produce ARM64 wheels. The `sy
 - [ ] Test wheels on actual ARM64 hardware (✅ done — this machine IS ARM64)
 - [ ] Consider hosting pre-built wheels as GitHub Releases
 - [ ] Update `download_wheels.py` if switching to GitHub Releases
+
+---
+
+## Session 3 — March 1, 2026
+
+### CI/CD: From 0/21 to 21/21 Green
+
+The GitHub Actions workflow (`build-wheels.yml`) was failing across all platforms. Fixed in two iterations:
+
+**Bug 1 — Source path error (all Linux/macOS/musllinux jobs):**
+The `Download tiktoken source` step did `cd source && tar xzf *.tar.gz && rm *.tar.gz` then tried `ls -d source/tiktoken-*/`. After `cd source`, the CWD was already `source/`, so the `ls` looked for `source/source/tiktoken-*/` — which didn't exist. `TIKTOKEN_SRC` was empty, so cibuildwheel tried to build the repo root, which has `docker/`, `source/`, `wheelhouse/` and failed with "Multiple top-level packages discovered."
+
+**Fix:** Replaced `cd source && tar ...` with `tar xzf source/*.tar.gz -C source/` to avoid changing directories.
+
+**Bug 2 — Missing Python import library (Windows ARM64 jobs):**
+Cross-compiling from `x86_64-pc-windows-msvc` to `aarch64-pc-windows-msvc`, the linker failed with `LNK1181: cannot open input file 'python313.lib'`. cibuildwheel sets `CARGO_BUILD_TARGET` but doesn't make ARM64 Python lib files available to the Rust linker.
+
+**Fix (two parts):**
+1. Added `PYO3_CROSS_PYTHON_VERSION` env var so PyO3 knows the target Python version
+2. Patched tiktoken's `Cargo.toml` at build time to add `generate-import-lib` to pyo3's features — this lets PyO3 generate the import library itself during compilation, eliminating the need for a pre-existing `python3XX.lib`
+
+**Bug 3 — Windows PowerShell source download also had the `cd source` issue.** Fixed with the same approach.
+
+### CI Results (Run #7, commit 032d5da)
+
+| Platform | Jobs | Status |
+|----------|------|--------|
+| Linux aarch64 (manylinux) | cp39, cp310, cp311, cp312, cp313 | All pass |
+| musllinux aarch64 | cp39, cp310, cp311, cp312, cp313 | All pass |
+| macOS arm64 (Apple Silicon) | cp39, cp310, cp311, cp312, cp313 | All pass |
+| Windows ARM64 | cp311, cp312, cp313 | All pass |
+| Collect all wheels | — | Pass |
+| **Total** | **21/21** | **All green** |
+
+Release and Publish jobs correctly skipped (only trigger on `v*` tag push).
+
+### Other Changes This Session
+
+- Added GitHub Releases publishing workflow (on `v*` tags)
+- Updated `scripts/download_wheels.py` to support downloading from GitHub Releases (not just workflow artifacts)
+- Updated `README.md` with install instructions
+- Added `source/`, `wheelhouse/`, `.venv/` to `.gitignore`
+- Fixed `collect-wheels` step to handle missing artifacts gracefully
+
+### Updated Roadmap
+
+- [x] Install Rust toolchain locally and attempt a native build test
+- [x] Test wheels on actual ARM64 hardware (this machine IS ARM64)
+- [ ] Test Docker builds with `build_local.py` (skipped — no Docker Desktop; covered by CI)
+- [x] Validate the GitHub Actions workflow runs on push — **21/21 green**
+- [x] Consider hosting pre-built wheels as GitHub Releases — workflow ready, triggers on `v*` tag
+- [x] Update `download_wheels.py` if switching to GitHub Releases — done
+
+### Next Steps
+
+- [ ] Create first release tag (`git tag v0.12.0 && git push --tags`) to trigger wheel publishing
+- [ ] Verify GitHub Release is created with all wheels attached
+- [ ] Test `pip install tiktoken --find-links` from the release URL
+- [ ] Consider adding more Python versions or platforms as needed
+- [ ] Set up dependabot or renovate for tiktoken version updates
