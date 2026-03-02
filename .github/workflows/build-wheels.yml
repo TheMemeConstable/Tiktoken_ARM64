@@ -222,6 +222,16 @@ jobs:
           echo "TIKTOKEN_SRC=$src" >> $env:GITHUB_ENV
         shell: pwsh
 
+      - name: Patch Cargo.toml for cross-compilation
+        run: |
+          $cargoToml = "${{ env.TIKTOKEN_SRC }}/Cargo.toml"
+          # Add generate-import-lib to pyo3 features so the linker doesn't need
+          # a pre-existing pythonXXX.lib for the ARM64 target
+          (Get-Content $cargoToml -Raw) -replace '"extension-module"', '"extension-module", "generate-import-lib"' | Set-Content $cargoToml
+          Write-Host "Patched Cargo.toml:"
+          Get-Content $cargoToml
+        shell: pwsh
+
       - name: Build wheel
         run: cibuildwheel --output-dir wheelhouse "${{ env.TIKTOKEN_SRC }}"
         env:
